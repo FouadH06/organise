@@ -1,0 +1,90 @@
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg-app);
+  overflow: hidden;
+}
+
+/* ── Header ── */
+.dash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 32px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg-app);
+}
+
+.dash-header-left { display: flex; flex-direction: column; gap: 2px; }
+.dash-header-right { display: flex; align-items: center; gap: 8px; }
+
+.dash-logo {
+  display: flex; align-items: center; gap: 10px;
+}
+.dash-logo-icon {
+  font-size: 22px;
+  color: var(--accent);
+  filter: drop-shadow(0 0 8px var(--accent-glow));
+}
+.dash-logo-text {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: var(--text-primary);
+}
+.dash-subtitle {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+/* ── Content ── */
+.dash-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 32px;
+}
+
+.dash-section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.archived-label { margin-top: 32px; }
+
+/* ── Grid ── */
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+.dash-grid-archived { opacity: 0.55; }
+.dash-grid-archived:hover { opacity: 0.8; }
+
+/* ── Empty state ── */
+.dash-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  gap: 16px;
+  text-align: center;
+}
+.dash-empty-icon { color: var(--text-dim); margin-bottom: 8px; }
+.dash-empty h2 { font-size: 20px; color: var(--text-primary); }
+.dash-empty p { color: var(--text-muted); max-width: 320px; }
+
+/* ── Loading ── */
+.dash-loading {
+  display: flex; align-items: center; justify-content: center;
+  height: 60vh;
+}
