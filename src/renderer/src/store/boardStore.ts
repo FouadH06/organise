@@ -5,6 +5,7 @@ import type { Node, Edge } from 'reactflow'
 import * as api from '../lib/api'
 import { supabase } from '../lib/supabase'
 import type { RealtimeChannel } from '@supabase/supabase-js'
+import { decodeEdgeLabel } from '../lib/edgeHandles'
 
 interface BoardStore {
   error: string | null
@@ -28,7 +29,7 @@ interface BoardStore {
   updateNodeDimensions: (id: string, width: number, height: number) => Promise<void>
   deleteNode: (id: string) => Promise<void>
   duplicateNode: (id: string) => Promise<void>
-  addEdge: (source: string, target: string) => Promise<void>
+  addEdge: (source: string, target: string, handles?: { sourceHandle?: string | null; targetHandle?: string | null }, replacedEdgeId?: string) => Promise<void>
   deleteEdge: (id: string) => Promise<void>
   saveViewport: (viewport: ViewportState) => Promise<void>
 
@@ -56,6 +57,7 @@ const defaultData = (type: NodeType): NodeData => {
 
 const pendingNodes = new Map<string, Promise<IdeaNode>>()
 const pendingEdges = new Map<string, Promise<IdeaEdge>>()
+const parentWrites = new Map<string, Promise<IdeaEdge>>()
 
 function safeParseJson(val: unknown): NodeData {
   if (!val) return defaultData('note')
@@ -82,6 +84,7 @@ function rawToRFEdge(e: IdeaEdge): Edge {
   return {
     id: e.id, source: e.source, target: e.target,
     type: 'deletable', label: e.label,
+    sourceHandle: e.sourceHandle ?? 'bottom', targetHandle: e.targetHandle ?? 'top',
     style: { stroke: 'var(--border-active)', strokeWidth: 1.5 },
     markerEnd: { type: 'arrowclosed' as const, color: 'var(--border-active)' }
   }
@@ -141,13 +144,14 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
       .on('postgres_changes', { event: '*', schema: 'public', table: 'edges', filter: `project_id=eq.${projectId}` },
         (payload) => {
           if (get().projectId !== projectId) return
-          if (payload.eventType === 'INSERT') {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
             const edge = rawToRFEdge({
               id: payload.new.id, source: payload.new.source_id,
-              target: payload.new.target_id, label: payload.new.label
+              target: payload.new.target_id, ...decodeEdgeLabel(payload.new.label)
             })
-            set(s => s.edges.some(e => e.id === edge.id || (e.source === edge.source && e.target === edge.target))
-              ? s : { edges: [...s.edges, edge] })
+            if (!parentWrites.has(projectId + ':' + edge.target)) {
+              set(s => ({ edges: [...s.edges.filter(e => e.target !== edge.target && e.id !== edge.id), edge] }))
+            }
           } else if (payload.eventType === 'DELETE') {
             const delId = (payload.old as { id?: string })?.id
             if (delId) set(s => ({ edges: s.edges.filter(e => e.id !== delId) }))
@@ -299,14 +303,25 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
       { x: node.position.x + 32, y: node.position.y + 32 }, structuredClone(node.data))
   },
 
-  addEdge: async (source, target) => {
+  addEdge: async (source, target, handles = {}, replacedEdgeId) => {
     const { projectId, edges } = get()
     if (!projectId) return
-    if (source === target || edges.some(e => e.source === source && e.target === target)) return
+    if (source === target) return
+    const sourceHandle = handles.sourceHandle ?? 'bottom'
+    const targetHandle = handles.targetHandle ?? 'top'
+    if (!replacedEdgeId && edges.some(e => e.source === source && e.target === target
+      && (e.sourceHandle ?? 'bottom') === sourceHandle && (e.targetHandle ?? 'top') === targetHandle)) return
+    const replaced = edges.filter(e => e.target === target || e.id === replacedEdgeId)
+    const key = projectId + ':' + target
+    const previous = parentWrites.get(key)
     const id = uuid()
-    set(s => ({ error: null, edges: [...s.edges, rawToRFEdge({ id, source, target })] }))
-    const creation = Promise.all([pendingNodes.get(source), pendingNodes.get(target)])
-      .then(() => api.createEdge({ id, projectId, source, target }))
+    set(s => ({ error: null, edges: [...s.edges.filter(e => !replaced.some(old => old.id === e.id)),
+      rawToRFEdge({ id, source, target, sourceHandle, targetHandle })] }))
+    const creation = Promise.all([pendingNodes.get(source), pendingNodes.get(target), previous?.catch(() => undefined),
+      replacedEdgeId ? pendingEdges.get(replacedEdgeId)?.catch(() => undefined) : undefined])
+      .then(([, , , old]) => api.createEdge({ id, projectId, source, target, sourceHandle, targetHandle,
+        replacedEdgeId: old?.id ?? replacedEdgeId }))
+    parentWrites.set(key, creation)
     pendingEdges.set(id, creation)
     try {
       const raw = await creation
@@ -316,12 +331,15 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
       }))
     } catch (err) {
       if (get().projectId === projectId) set(s => ({
-        edges: s.edges.filter(e => e.id !== id),
+        edges: s.edges.some(e => e.id === id)
+          ? [...s.edges.filter(e => e.id !== id), ...replaced.filter(old => !s.edges.some(e => e.id === old.id))]
+          : s.edges,
         error: 'Could not save the connection. Please try again.'
       }))
       console.error('Failed to add edge on server:', err)
     } finally {
       pendingEdges.delete(id)
+      if (parentWrites.get(key) === creation) parentWrites.delete(key)
     }
   },
 

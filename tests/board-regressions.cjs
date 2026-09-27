@@ -21,13 +21,13 @@ const channel = {
   on(_event, filter, callback) { callbacks[filter.table] = callback; return this },
   subscribe(callback) { callback('SUBSCRIBED'); return this }
 }
-let finishNode, finishEdge, nodeInput, edgeInput
+let finishNode, finishEdge, rejectEdge, nodeInput, edgeInput
 const updates = []
 const api = {
   getNodes: async () => [], getEdges: async () => [],
   getViewport: async () => ({ x: 0, y: 0, zoom: 1 }), getCategories: async () => [],
   createNode: input => { nodeInput = input; return new Promise(resolve => { finishNode = resolve }) },
-  createEdge: input => { edgeInput = input; return new Promise(resolve => { finishEdge = resolve }) },
+  createEdge: input => { edgeInput = input; return new Promise((resolve, reject) => { finishEdge = resolve; rejectEdge = reject }) },
   updateNode: async (id, patch) => { updates.push({ id, patch }) }
 }
 const originalLoad = Module._load
@@ -71,6 +71,37 @@ async function main() {
   finishEdge(edgeInput)
   await connection
   assert.equal(store.getState().edges.length, 1)
+
+  const unrelated = { id: 'unrelated', source: 'x', target: 'y' }
+  store.getState().setEdges([...store.getState().edges, unrelated])
+  const reparent = store.getState().addEdge('new-parent', 'other', { sourceHandle: 'top', targetHandle: 'right' })
+  assert.equal(store.getState().edges.filter(e => e.target === 'other').length, 1)
+  assert.equal(store.getState().edges.find(e => e.target === 'other').source, 'new-parent',
+    'new parent immediately replaces old incoming link')
+  assert.ok(store.getState().edges.some(e => e.id === 'unrelated'))
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(edgeInput.sourceHandle, 'top')
+  assert.equal(edgeInput.targetHandle, 'right')
+  finishEdge(edgeInput)
+  await reparent
+  const savedParent = store.getState().edges.find(e => e.target === 'other')
+  const moved = store.getState().addEdge('third-parent', 'different-child', {}, savedParent.id)
+  assert.ok(!store.getState().edges.some(e => e.id === savedParent.id), 'moving endpoint removes old edge immediately')
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(edgeInput.replacedEdgeId, savedParent.id, 'endpoint reconnect persists old-edge removal')
+  const errorLogger = console.error
+  console.error = () => {}
+  rejectEdge(new Error('Network unavailable'))
+  await moved
+  console.error = errorLogger
+  assert.ok(store.getState().edges.some(e => e.id === savedParent.id), 'failed reconnect restores old link')
+  assert.ok(!store.getState().edges.some(e => e.target === 'different-child'))
+  const { encodeEdgeLabel, decodeEdgeLabel } = require('../src/renderer/src/lib/edgeHandles.ts')
+  assert.deepEqual(decodeEdgeLabel(encodeEdgeLabel('Caption', 'top', 'left')),
+    { label: 'Caption', sourceHandle: 'top', targetHandle: 'left' })
+  assert.deepEqual(decodeEdgeLabel('Legacy label'),
+    { label: 'Legacy label', sourceHandle: 'bottom', targetHandle: 'top' })
+  console.log('PASS: parent replacement, endpoint reconnection, failure rollback and saved connector sides')
 
   const nodes = [node('APP', 'mainIdea'), node('NOTE'), node('GOAL'), node('ISOLATED'), node('SECOND', 'mainIdea')]
   const edges = [

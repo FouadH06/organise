@@ -4,6 +4,7 @@
  */
 import { supabase } from './supabase'
 import { v4 as uuid } from 'uuid'
+import { encodeEdgeLabel, decodeEdgeLabel } from './edgeHandles'
 import type { Project, IdeaNode, IdeaEdge, ViewportState, NodeType, NodeData } from '../types'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -24,7 +25,7 @@ function rowToEdge(row: Record<string, unknown>): IdeaEdge {
     id: row.id as string,
     source: row.source_id as string,
     target: row.target_id as string,
-    label: (row.label as string) ?? ''
+    ...decodeEdgeLabel((row.label as string) ?? '')
   }
 }
 
@@ -211,6 +212,9 @@ export async function createEdge(input: {
   source: string
   target: string
   label?: string
+  sourceHandle?: string
+  targetHandle?: string
+  replacedEdgeId?: string
 }): Promise<IdeaEdge> {
   const { data: existing, error: findError } = await supabase
     .from('edges')
@@ -221,18 +225,32 @@ export async function createEdge(input: {
     .limit(1)
     .maybeSingle()
   if (findError) throw findError
-  if (existing) return rowToEdge(existing as Record<string, unknown>)
+  const label = encodeEdgeLabel(input.label, input.sourceHandle, input.targetHandle)
 
   const row = {
     id: input.id ?? uuid(),
     project_id: input.projectId,
     source_id: input.source,
     target_id: input.target,
-    label: input.label ?? '',
+    label,
     created_at: Date.now()
   }
-  const { data, error } = await supabase.from('edges').insert(row).select().single()
+  const { data, error } = existing
+    ? await supabase.from('edges').update({ label }).eq('id', existing.id).select().single()
+    : await supabase.from('edges').insert(row).select().single()
   if (error) throw error
+  // An incoming connection is the card's parent. Save the replacement first
+  // so a failed insert never destroys the existing parent.
+  const removal = supabase.from('edges').delete()
+    .eq('project_id', input.projectId).neq('id', data.id)
+  const quote = (value: string) => JSON.stringify(value)
+  const { error: parentError } = input.replacedEdgeId
+    ? await removal.or(`target_id.eq.${quote(input.target)},id.eq.${quote(input.replacedEdgeId)}`)
+    : await removal.eq('target_id', input.target)
+  if (parentError) {
+    if (!existing) await supabase.from('edges').delete().eq('id', data.id)
+    throw parentError
+  }
   return rowToEdge(data as Record<string, unknown>)
 }
 

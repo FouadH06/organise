@@ -48,6 +48,8 @@ export interface IdeaNode {
 }
 
 export interface IdeaEdge {
+  sourceHandle?: string
+  targetHandle?: string
   id: string
   source: string
   target: string

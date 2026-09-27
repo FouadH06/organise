@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Handle, Position, NodeResizer, type NodeProps } from 'reactflow'
+import { NodeResizer, type NodeProps } from 'reactflow'
+import { CardHandles } from './CardHandles'
 import { useBoardStore } from '../../../store/boardStore'
 import type { NodeData, NodeType } from '../../../types'
 import { NODE_TYPE_META } from '../../../types'
@@ -84,10 +85,7 @@ export function GenericNode({ id, data, selected, type }: NodeProps<NodeData> & 
           ...(data.customBg ? { background: data.customBg } : {})
         } as React.CSSProperties}
       >
-        <Handle type="target" position={Position.Top} />
-        <Handle type="source" position={Position.Bottom} />
-        <Handle type="source" position={Position.Right} id="right" />
-        <Handle type="target" position={Position.Left} id="left" />
+        <CardHandles />
 
         {/* Header */}
         <div className="node-header">

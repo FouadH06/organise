@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Handle, Position, NodeResizer, type NodeProps } from 'reactflow'
+import { NodeResizer, type NodeProps } from 'reactflow'
+import { CardHandles } from './CardHandles'
 import { useBoardStore } from '../../../store/boardStore'
 import type { NodeData, SubTask } from '../../../types'
 import { Copy, Trash2, Plus } from 'lucide-react'
@@ -72,8 +73,7 @@ export function TaskNode({ id, data, selected }: NodeProps<NodeData>) {
           ...(data.customBg ? { background: data.customBg } : {})
         } as React.CSSProperties}
       >
-        <Handle type="target" position={Position.Top} />
-        <Handle type="source" position={Position.Bottom} />
+        <CardHandles />
 
         {/* Header */}
         <div className="node-header task-header">

@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useRef, useState } from 'react'
 import ReactFlow, {
   Background, Controls, BackgroundVariant,
-  applyNodeChanges, applyEdgeChanges, MiniMap,
+  applyNodeChanges, applyEdgeChanges, MiniMap, ConnectionMode,
   type OnConnect, type NodeDragHandler, type OnEdgesDelete
 } from 'reactflow'
 import 'reactflow/dist/style.css'
@@ -13,6 +13,7 @@ import { GenericNode } from './nodes/GenericNode'
 import { DeletableEdge } from './DeletableEdge'
 import ContextMenu from './ContextMenu'
 import Sidebar from './Sidebar'
+import ResizableSidebar from './ResizableSidebar'
 import { ArrowLeft, Maximize2 } from 'lucide-react'
 import './Board.css'
 
@@ -93,7 +94,7 @@ export default function Board({ project, onBack }: Props) {
   // Connect nodes (create edge)
   const onConnect: OnConnect = useCallback(async (params) => {
     if (!params.source || !params.target) return
-    await store.addEdge(params.source, params.target)
+    await store.addEdge(params.source, params.target, params)
   }, [store])
 
   // Persist position after drag
@@ -187,6 +188,7 @@ export default function Board({ project, onBack }: Props) {
         {store.error && <div role="alert" style={{ position: 'absolute', top: 54, right: 16, zIndex: 100, background: '#7f1d1d', padding: 12, borderRadius: 8 }}>{store.error}</div>}
         {/* Sidebar */}
         {sidebarOpen && (
+          <ResizableSidebar>
           <Sidebar
             project={project}
             nodes={nodes}
@@ -194,6 +196,7 @@ export default function Board({ project, onBack }: Props) {
             onAddNode={(type) => handleCreateNode(type)}
             onFocusNode={handleFocusNode}
           />
+          </ResizableSidebar>
         )}
 
         {/* Canvas */}
@@ -213,6 +216,12 @@ export default function Board({ project, onBack }: Props) {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            connectionMode={ConnectionMode.Loose}
+            onEdgeUpdate={(edge, connection) => {
+              if (connection.source && connection.target) {
+                void store.addEdge(connection.source, connection.target, connection, edge.id)
+              }
+            }}
             onNodeDragStop={onNodeDragStop}
             onEdgesDelete={onEdgesDelete}
             onPaneContextMenu={onPaneContextMenu}
