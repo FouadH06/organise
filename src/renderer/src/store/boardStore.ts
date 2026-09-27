@@ -51,11 +51,21 @@ const defaultData = (type: NodeType): NodeData => {
   }
 }
 
+function safeParseJson(val: unknown): NodeData {
+  if (!val) return defaultData('note')
+  if (typeof val === 'object') return val as NodeData
+  try {
+    return JSON.parse(val as string)
+  } catch {
+    return defaultData('note')
+  }
+}
+
 function rawToRFNode(n: IdeaNode): Node<NodeData> {
   return {
     id: n.id, type: n.type,
     position: n.position,
-    data: n.data,
+    data: safeParseJson(n.data),
     style: { width: n.width, height: n.height }
   }
 }
@@ -91,10 +101,22 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         api.getCategories(projectId)
       ])
 
+      // Check local storage for viewport first to maintain per-user position
+      let userVp = viewport
+      try {
+        const savedLocal = localStorage.getItem(`ideaboard_vp_${projectId}`)
+        if (savedLocal) {
+          const parsed = JSON.parse(savedLocal)
+          if (parsed && typeof parsed.zoom === 'number' && parsed.zoom >= 0.2) {
+            userVp = parsed
+          }
+        }
+      } catch {}
+
       set({
         nodes: rawNodes.map(rawToRFNode),
         edges: rawEdges.map(rawToRFEdge),
-        viewport,
+        viewport: userVp,
         categories: categories as Category[],
         loading: false
       })
@@ -107,36 +129,42 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     const channel = supabase
       .channel(`board:${projectId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'nodes', filter: `project_id=eq.${projectId}` },
-        async (payload) => {
+        (payload) => {
           if (payload.eventType === 'INSERT') {
+            const raw = payload.new
             const node = rawToRFNode({
-              id: payload.new.id,
-              type: payload.new.type,
-              position: { x: payload.new.position_x, y: payload.new.position_y },
-              data: typeof payload.new.data === 'string' ? JSON.parse(payload.new.data) : payload.new.data,
-              width: payload.new.width,
-              height: payload.new.height
+              id: raw.id,
+              type: raw.type,
+              position: { x: raw.position_x, y: raw.position_y },
+              data: safeParseJson(raw.data),
+              width: raw.width,
+              height: raw.height
             })
             set(s => {
-              if (s.nodes.find(n => n.id === node.id)) return s // already exists (our own insert)
+              if (s.nodes.some(n => n.id === node.id)) return s
               return { nodes: [...s.nodes, node] }
             })
           } else if (payload.eventType === 'UPDATE') {
+            const raw = payload.new
+            const updated = rawToRFNode({
+              id: raw.id,
+              type: raw.type,
+              position: { x: raw.position_x, y: raw.position_y },
+              data: safeParseJson(raw.data),
+              width: raw.width,
+              height: raw.height
+            })
             set(s => ({
-              nodes: s.nodes.map(n => n.id === payload.new.id ? rawToRFNode({
-                id: payload.new.id,
-                type: payload.new.type,
-                position: { x: payload.new.position_x, y: payload.new.position_y },
-                data: typeof payload.new.data === 'string' ? JSON.parse(payload.new.data) : payload.new.data,
-                width: payload.new.width,
-                height: payload.new.height
-              }) : n)
+              nodes: s.nodes.map(n => n.id === raw.id ? updated : n)
             }))
           } else if (payload.eventType === 'DELETE') {
-            set(s => ({
-              nodes: s.nodes.filter(n => n.id !== payload.old.id),
-              edges: s.edges.filter(e => e.source !== payload.old.id && e.target !== payload.old.id)
-            }))
+            const delId = (payload.old as { id?: string })?.id
+            if (delId) {
+              set(s => ({
+                nodes: s.nodes.filter(n => n.id !== delId),
+                edges: s.edges.filter(e => e.source !== delId && e.target !== delId)
+              }))
+            }
           }
         }
       )
@@ -150,11 +178,14 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
               label: payload.new.label
             })
             set(s => {
-              if (s.edges.find(e => e.id === edge.id)) return s
+              if (s.edges.some(e => e.id === edge.id)) return s
               return { edges: [...s.edges, edge] }
             })
           } else if (payload.eventType === 'DELETE') {
-            set(s => ({ edges: s.edges.filter(e => e.id !== payload.old.id) }))
+            const delId = (payload.old as { id?: string })?.id
+            if (delId) {
+              set(s => ({ edges: s.edges.filter(e => e.id !== delId) }))
+            }
           }
         }
       )
@@ -175,59 +206,102 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     const { projectId } = get()
     if (!projectId) return
     const data = { ...defaultData(type), ...initialData }
-    const raw = await api.createNode({
-      projectId, type, position, data,
-      width: type === 'mainIdea' ? 320 : 280,
-      height: type === 'mainIdea' ? 200 : 160
-    })
-    set(s => ({ nodes: [...s.nodes, rawToRFNode(raw)] }))
+    try {
+      const raw = await api.createNode({
+        projectId, type, position, data,
+        width: type === 'mainIdea' ? 320 : 280,
+        height: type === 'mainIdea' ? 200 : 160
+      })
+      const newNode = rawToRFNode(raw)
+      set(s => {
+        if (s.nodes.some(n => n.id === newNode.id)) return s
+        return { nodes: [...s.nodes, newNode] }
+      })
+    } catch (err) {
+      console.error('Failed to create node on server:', err)
+    }
   },
 
   updateNodeData: async (id, data) => {
     const node = get().nodes.find(n => n.id === id)
     if (!node) return
     const newData = { ...node.data, ...data }
-    await api.updateNode(id, { data: newData })
     set(s => ({
       nodes: s.nodes.map(n => n.id === id ? { ...n, data: newData } : n)
     }))
+    try {
+      await api.updateNode(id, { data: newData })
+    } catch (err) {
+      console.error('Failed to update node data on server:', err)
+    }
   },
 
   updateNodePosition: async (id, position) => {
-    await api.updateNode(id, { position })
+    set(s => ({
+      nodes: s.nodes.map(n => n.id === id ? { ...n, position } : n)
+    }))
+    try {
+      await api.updateNode(id, { position })
+    } catch (err) {
+      console.error('Failed to update node position on server:', err)
+    }
   },
 
   deleteNode: async (id) => {
-    await api.deleteNode(id)
     set(s => ({
       nodes: s.nodes.filter(n => n.id !== id),
       edges: s.edges.filter(e => e.source !== id && e.target !== id)
     }))
+    try {
+      await api.deleteNode(id)
+    } catch (err) {
+      console.error('Failed to delete node on server:', err)
+    }
   },
 
   duplicateNode: async (id) => {
-    const raw = await api.duplicateNode(id)
-    if (!raw) return
-    set(s => ({ nodes: [...s.nodes, rawToRFNode(raw)] }))
+    try {
+      const raw = await api.duplicateNode(id)
+      if (!raw) return
+      const newNode = rawToRFNode(raw)
+      set(s => ({ nodes: [...s.nodes, newNode] }))
+    } catch (err) {
+      console.error('Failed to duplicate node on server:', err)
+    }
   },
 
   addEdge: async (source, target) => {
     const { projectId } = get()
     if (!projectId) return
-    const raw = await api.createEdge({ projectId, source, target })
-    set(s => ({ edges: [...s.edges, rawToRFEdge(raw)] }))
+    try {
+      const raw = await api.createEdge({ projectId, source, target })
+      set(s => ({ edges: [...s.edges, rawToRFEdge(raw)] }))
+    } catch (err) {
+      console.error('Failed to add edge on server:', err)
+    }
   },
 
   deleteEdge: async (id) => {
-    await api.deleteEdge(id)
     set(s => ({ edges: s.edges.filter(e => e.id !== id) }))
+    try {
+      await api.deleteEdge(id)
+    } catch (err) {
+      console.error('Failed to delete edge on server:', err)
+    }
   },
 
   saveViewport: async (viewport) => {
     const { projectId } = get()
     if (!projectId) return
+    // Don't save broken extreme zoom out or in
+    if (viewport.zoom < 0.15 || viewport.zoom > 3) return
+    try {
+      localStorage.setItem(`ideaboard_vp_${projectId}`, JSON.stringify(viewport))
+    } catch {}
     set({ viewport })
-    await api.saveViewport(projectId, viewport)
+    try {
+      await api.saveViewport(projectId, viewport)
+    } catch {}
   },
 
   loadCategories: async (projectId) => {

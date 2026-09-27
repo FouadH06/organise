@@ -24,9 +24,10 @@ interface Props {
   project: Project
   nodes: Node<NodeData>[]
   onAddNode: (type: NodeType) => void
+  onFocusNode?: (nodeId: string) => void
 }
 
-export default function Sidebar({ project, nodes, onAddNode }: Props) {
+export default function Sidebar({ project, nodes, onAddNode, onFocusNode }: Props) {
   const tasks = useMemo(() => nodes.filter(n => n.type === 'task'), [nodes])
   const doneTasks = useMemo(() => tasks.filter(n => n.data.completed), [tasks])
 
@@ -91,7 +92,13 @@ export default function Sidebar({ project, nodes, onAddNode }: Props) {
             </div>
             <div className="sidebar-task-list">
               {tasks.slice(0, 8).map(n => (
-                <div key={n.id} className={`sidebar-task-item ${n.data.completed ? 'completed' : ''}`}>
+                <div
+                  key={n.id}
+                  className={`sidebar-task-item ${n.data.completed ? 'completed' : ''}`}
+                  onClick={() => onFocusNode?.(n.id)}
+                  style={{ cursor: 'pointer' }}
+                  title="Click to jump to this task on the canvas"
+                >
                   {n.data.completed
                     ? <CheckSquare size={12} style={{ color: 'var(--green)' }} />
                     : <Circle size={12} style={{ color: 'var(--text-dim)' }} />}
@@ -114,8 +121,15 @@ export default function Sidebar({ project, nodes, onAddNode }: Props) {
           {(Object.entries(byType) as [NodeType, number][]).map(([type, count]) => {
             const m = NODE_TYPE_META[type]
             if (!m) return null
+            const first = nodes.find(n => n.type === type)
             return (
-              <div key={type} className="sidebar-type-item">
+              <div
+                key={type}
+                className="sidebar-type-item"
+                onClick={() => first && onFocusNode?.(first.id)}
+                style={{ cursor: first ? 'pointer' : 'default' }}
+                title={first ? "Click to jump to this card on canvas" : undefined}
+              >
                 <span className="sidebar-type-dot" style={{ background: m.color }} />
                 <span className="sidebar-type-label">{m.label}</span>
                 <span className="sidebar-type-count">{count}</span>

@@ -12,7 +12,7 @@ import { TaskNode } from './nodes/TaskNode'
 import { GenericNode } from './nodes/GenericNode'
 import ContextMenu from './ContextMenu'
 import Sidebar from './Sidebar'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Maximize2 } from 'lucide-react'
 import './Board.css'
 
 // Each generic node type needs a stable component reference (not inline lambdas)
@@ -61,9 +61,18 @@ export default function Board({ project, onBack }: Props) {
     store.loadBoard(project.id).then(() => {
       setNodes(store.nodes)
       setEdges(store.edges)
+      // Auto-fit cards on initial load so cards are never lost off-screen
+      setTimeout(() => {
+        if (rfInstance.current) {
+          if (store.nodes.length > 0) {
+            rfInstance.current.fitView({ padding: 0.25, duration: 400 })
+          } else if (store.viewport && store.viewport.zoom >= 0.2) {
+            rfInstance.current.setViewport(store.viewport)
+          }
+        }
+      }, 80)
     })
     return () => {
-      // Save viewport and unsubscribe realtime channel on unmount
       if (rfInstance.current) {
         const vp = rfInstance.current.getViewport()
         store.saveViewport(vp)
@@ -72,7 +81,7 @@ export default function Board({ project, onBack }: Props) {
     }
   }, [project.id])
 
-  // Sync store → local RF state when store changes (after add/delete)
+  // Sync store → local RF state when store changes
   useEffect(() => { setNodes(store.nodes) }, [store.nodes])
   useEffect(() => { setEdges(store.edges) }, [store.edges])
 
@@ -105,13 +114,32 @@ export default function Board({ project, onBack }: Props) {
     setCtxMenu(s => ({ ...s, visible: false }))
   }, [])
 
-  // Create card from context menu
-  const handleCreateNode = useCallback(async (type: NodeType) => {
+  // Create card from context menu or sidebar (places in view center if from sidebar)
+  const handleCreateNode = useCallback(async (type: NodeType, customPos?: { x: number; y: number }) => {
     setCtxMenu(s => ({ ...s, visible: false }))
-    await store.addNode(type, { x: ctxMenu.canvasX, y: ctxMenu.canvasY })
+    let pos = customPos
+    if (!pos) {
+      if (ctxMenu.visible && (ctxMenu.canvasX !== 0 || ctxMenu.canvasY !== 0)) {
+        pos = { x: ctxMenu.canvasX, y: ctxMenu.canvasY }
+      } else if (rfInstance.current && flowWrapper.current) {
+        const rect = flowWrapper.current.getBoundingClientRect()
+        pos = rfInstance.current.screenToFlowPosition({
+          x: rect.left + rect.width / 2 + (Math.random() * 60 - 30),
+          y: rect.top + rect.height / 2 + (Math.random() * 60 - 30)
+        })
+      } else {
+        pos = { x: 300, y: 200 }
+      }
+    }
+    await store.addNode(type, pos)
   }, [ctxMenu, store])
 
-  // Delete selected node
+  // Focus a specific node
+  const handleFocusNode = useCallback((nodeId: string) => {
+    rfInstance.current?.fitView({ nodes: [{ id: nodeId }], duration: 500, maxZoom: 1 })
+  }, [])
+
+  // Keyboard shortcuts
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') setCtxMenu(s => ({ ...s, visible: false }))
   }, [])
@@ -120,7 +148,6 @@ export default function Board({ project, onBack }: Props) {
     window.addEventListener('keydown', handleKeyDown)
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
-      // Cleanup React Flow global styles if unmounted during an interaction
       document.body.style.userSelect = ''
       document.body.style.pointerEvents = ''
       document.body.classList.remove('react-flow__user-selection-none')
@@ -138,6 +165,13 @@ export default function Board({ project, onBack }: Props) {
         </button>
         <span className="board-topbar-title">{project.name}</span>
         <div className="board-topbar-right">
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => rfInstance.current?.fitView({ padding: 0.25, duration: 400 })}
+            title="Center all cards on screen"
+          >
+            <Maximize2 size={14} /> Center View
+          </button>
           <button className="btn btn-ghost btn-sm" onClick={() => setSidebarOpen(s => !s)}>
             {sidebarOpen ? '← Hide Sidebar' : '→ Show Sidebar'}
           </button>
@@ -151,6 +185,7 @@ export default function Board({ project, onBack }: Props) {
             project={project}
             nodes={nodes}
             onAddNode={(type) => handleCreateNode(type)}
+            onFocusNode={handleFocusNode}
           />
         )}
 
@@ -169,21 +204,16 @@ export default function Board({ project, onBack }: Props) {
             onInit={(instance) => {
               // @ts-expect-error ref type
               rfInstance.current = instance
-              if (store.viewport) {
-                instance.setViewport(store.viewport)
-              }
             }}
             nodeTypes={NODE_TYPES}
-            fitView={!store.viewport}
-            defaultViewport={store.viewport ?? { x: 0, y: 0, zoom: 0.8 }}
-            minZoom={0.1}
-            maxZoom={2.5}
+            minZoom={0.2}
+            maxZoom={2.0}
             snapToGrid
             snapGrid={[16, 16]}
             deleteKeyCode="Delete"
             multiSelectionKeyCode="Shift"
             panOnScroll={false}
-            panOnDrag={[1, 2]}
+            panOnDrag={true}
             zoomOnScroll
             zoomOnPinch
           >
