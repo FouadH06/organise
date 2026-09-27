@@ -11,6 +11,7 @@ import {
 import ConfirmDialog from '../ConfirmDialog'
 import ColorPicker from './ColorPicker'
 import './NodeCard.css'
+import { useCardGrowth } from '../../../hooks/useCardGrowth'
 
 const ICON_MAP: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
   Lightbulb, CheckSquare, FileText, Sparkles, Search,
@@ -28,6 +29,7 @@ function NodeIcon({ name, color }: { name: string; color: string }) {
  * Renders title + description with the node type's color accent and icon.
  */
 export function GenericNode({ id, data, selected, type }: NodeProps<NodeData> & { type: string }) {
+  const cardRef = useCardGrowth(id)
   const { updateNodeData, updateNodeDimensions, deleteNode, duplicateNode } = useBoardStore()
   const [editTitle, setEditTitle] = useState(false)
   const [editDesc, setEditDesc] = useState(false)
@@ -70,10 +72,12 @@ export function GenericNode({ id, data, selected, type }: NodeProps<NodeData> & 
         lineClassName="node-resizer-line"
         handleClassName="node-resizer-handle"
         onResizeEnd={(_evt, params) => {
+          useBoardStore.getState().updateNodePosition(id, { x: params.x, y: params.y })
           updateNodeDimensions(id, Math.round(params.width), Math.round(params.height))
         }}
       />
       <div
+        ref={cardRef}
         className={`node-card ${selected ? 'selected' : ''} ${isLight ? 'node-card-light' : ''}`}
         style={{
           '--node-accent': meta.color,
@@ -93,7 +97,7 @@ export function GenericNode({ id, data, selected, type }: NodeProps<NodeData> & 
             {editTitle ? (
               <input
                 autoFocus
-                className="node-title-input"
+                className="node-title-input nodrag"
                 value={titleVal}
                 onChange={e => setTitleVal(e.target.value)}
                 onBlur={saveTitle}
@@ -122,7 +126,7 @@ export function GenericNode({ id, data, selected, type }: NodeProps<NodeData> & 
             <textarea
               ref={textareaRef}
               autoFocus
-              className="node-desc-input"
+              className="node-desc-input nodrag nowheel"
               value={descVal}
               onChange={e => {
                 setDescVal(e.target.value)

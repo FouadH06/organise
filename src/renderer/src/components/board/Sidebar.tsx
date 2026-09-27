@@ -60,10 +60,11 @@ export default function Sidebar({ project, nodes, edges = [], onAddNode, onFocus
     const outgoing = new Map<string, string[]>()
 
     edges.forEach(e => {
+      if (!nodeMap.has(e.source) || !nodeMap.has(e.target)) return
       sources.add(e.source)
       targets.add(e.target)
       const list = outgoing.get(e.source) ?? []
-      list.push(e.target)
+      if (!list.includes(e.target)) list.push(e.target)
       outgoing.set(e.source, list)
     })
 
@@ -74,37 +75,34 @@ export default function Sidebar({ project, nodes, edges = [], onAddNode, onFocus
     // Priority 1: mainIdeas
     nodes.filter(n => n.type === 'mainIdea').forEach(n => {
       rootNodes.push(n)
-      visited.add(n.id)
     })
 
     // Priority 2: nodes with outgoing edges and no incoming edges
     nodes.forEach(n => {
-      if (!visited.has(n.id) && sources.has(n.id) && !targets.has(n.id)) {
+      if (n.type !== 'mainIdea' && sources.has(n.id) && !targets.has(n.id)) {
         rootNodes.push(n)
-        visited.add(n.id)
       }
     })
 
     // Priority 3: nodes with outgoing edges (break cycles)
     nodes.forEach(n => {
-      if (!visited.has(n.id) && sources.has(n.id)) {
+      if (!rootNodes.some(root => root.id === n.id) && sources.has(n.id)) {
         rootNodes.push(n)
-        visited.add(n.id)
       }
     })
 
     // Recursively build tree nodes
     const buildBranch = (n: Node<NodeData>, branchVisited: Set<string>): TreeNode => {
+      visited.add(n.id)
       const branchSet = new Set(branchVisited)
       branchSet.add(n.id)
       const childIds = outgoing.get(n.id) ?? []
       const children: TreeNode[] = []
 
       for (const cid of childIds) {
-        if (!branchSet.has(cid)) {
+        if (!visited.has(cid) && !branchSet.has(cid)) {
           const childNode = nodeMap.get(cid)
           if (childNode) {
-            visited.add(cid)
             children.push(buildBranch(childNode, branchSet))
           }
         }
@@ -112,7 +110,10 @@ export default function Sidebar({ project, nodes, edges = [], onAddNode, onFocus
       return { node: n, children }
     }
 
-    const treeList: TreeNode[] = rootNodes.map(r => buildBranch(r, new Set()))
+    const treeList: TreeNode[] = []
+    for (const root of rootNodes) {
+      if (!visited.has(root.id)) treeList.push(buildBranch(root, new Set()))
+    }
     const unattachedNodes = nodes.filter(n => !visited.has(n.id))
 
     return { trees: treeList, unattached: unattachedNodes }

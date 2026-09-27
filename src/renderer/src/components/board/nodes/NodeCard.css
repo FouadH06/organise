@@ -85,6 +85,7 @@
 
 /* ── Header ── */
 .node-header {
+  flex-shrink: 0;
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -144,7 +145,7 @@
 /* ── Body ── */
 .node-body {
   padding: 0 12px 10px 16px;
-  flex: 1;
+  flex: 1 0 auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -159,6 +160,8 @@
 }
 
 .node-desc-input {
+  flex-shrink: 0;
+  overflow: hidden;
   font-size: 12px;
   color: var(--text-muted);
   background: transparent;
@@ -176,6 +179,7 @@
 
 /* ── Footer ── */
 .node-footer {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 6px;

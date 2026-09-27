@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useRef, useState } from 'react'
 import ReactFlow, {
   Background, Controls, BackgroundVariant,
-  useNodesState, useEdgesState, MiniMap,
+  applyNodeChanges, applyEdgeChanges, MiniMap,
   type OnConnect, type NodeDragHandler, type OnEdgesDelete
 } from 'reactflow'
 import 'reactflow/dist/style.css'
@@ -52,8 +52,15 @@ interface Props {
 
 export default function Board({ project, onBack }: Props) {
   const store = useBoardStore()
-  const [nodes, setNodes, onNodesChange] = useNodesState([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const { nodes, edges } = store
+  const onNodesChange = useCallback((changes: import('reactflow').NodeChange[]) => {
+    const current = useBoardStore.getState()
+    current.setNodes(applyNodeChanges(changes, current.nodes))
+  }, [])
+  const onEdgesChange = useCallback((changes: import('reactflow').EdgeChange[]) => {
+    const current = useBoardStore.getState()
+    current.setEdges(applyEdgeChanges(changes, current.edges))
+  }, [])
   const [ctxMenu, setCtxMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0, canvasX: 0, canvasY: 0 })
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const flowWrapper = useRef<HTMLDivElement>(null)
@@ -62,15 +69,14 @@ export default function Board({ project, onBack }: Props) {
   // Load board on mount
   useEffect(() => {
     store.loadBoard(project.id).then(() => {
-      setNodes(store.nodes)
-      setEdges(store.edges)
+      const loaded = useBoardStore.getState()
       // Auto-fit cards on initial load so cards are never lost off-screen
       setTimeout(() => {
         if (rfInstance.current) {
-          if (store.nodes.length > 0) {
+          if (loaded.nodes.length > 0) {
             rfInstance.current.fitView({ padding: 0.25, duration: 400 })
-          } else if (store.viewport && store.viewport.zoom >= 0.2) {
-            rfInstance.current.setViewport(store.viewport)
+          } else if (loaded.viewport && loaded.viewport.zoom >= 0.2) {
+            rfInstance.current.setViewport(loaded.viewport)
           }
         }
       }, 80)
@@ -83,10 +89,6 @@ export default function Board({ project, onBack }: Props) {
       store.unloadBoard()
     }
   }, [project.id])
-
-  // Sync store → local RF state when store changes
-  useEffect(() => { setNodes(store.nodes) }, [store.nodes])
-  useEffect(() => { setEdges(store.edges) }, [store.edges])
 
   // Connect nodes (create edge)
   const onConnect: OnConnect = useCallback(async (params) => {
@@ -182,6 +184,7 @@ export default function Board({ project, onBack }: Props) {
       </div>
 
       <div className="board-body">
+        {store.error && <div role="alert" style={{ position: 'absolute', top: 54, right: 16, zIndex: 100, background: '#7f1d1d', padding: 12, borderRadius: 8 }}>{store.error}</div>}
         {/* Sidebar */}
         {sidebarOpen && (
           <Sidebar

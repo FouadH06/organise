@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { v4 as uuid } from 'uuid'
 import type { IdeaNode, IdeaEdge, NodeData, NodeType, ViewportState, Category, CategoryOption } from '../types'
 import type { Node, Edge } from 'reactflow'
 import * as api from '../lib/api'
@@ -6,6 +7,7 @@ import { supabase } from '../lib/supabase'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 interface BoardStore {
+  error: string | null
   projectId: string | null
   nodes: Node<NodeData>[]
   edges: Edge[]
@@ -52,6 +54,9 @@ const defaultData = (type: NodeType): NodeData => {
   }
 }
 
+const pendingNodes = new Map<string, Promise<IdeaNode>>()
+const pendingEdges = new Map<string, Promise<IdeaEdge>>()
+
 function safeParseJson(val: unknown): NodeData {
   if (!val) return defaultData('note')
   if (typeof val === 'object') return val as NodeData
@@ -83,6 +88,7 @@ function rawToRFEdge(e: IdeaEdge): Edge {
 }
 
 export const useBoardStore = create<BoardStore>((set, get) => ({
+  error: null,
   projectId: null,
   nodes: [],
   edges: [],
@@ -119,7 +125,10 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
               position: { x: raw.position_x, y: raw.position_y },
               data: safeParseJson(raw.data), width: raw.width, height: raw.height
             })
-            set(s => ({ nodes: s.nodes.map(n => n.id === raw.id ? updated : n) }))
+            set(s => ({ nodes: s.nodes.map(n => n.id === raw.id ? {
+              ...n, ...updated, selected: n.selected,
+              ...(n.dragging || n.resizing ? { position: n.position, style: n.style } : {})
+            } : n) }))
           } else if (payload.eventType === 'DELETE') {
             const delId = (payload.old as { id?: string })?.id
             if (delId) set(s => ({
@@ -212,19 +221,23 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     const { projectId } = get()
     if (!projectId) return
     const data = { ...defaultData(type), ...initialData }
+    const id = uuid()
+    const width = type === 'mainIdea' ? 320 : 280
+    const height = type === 'mainIdea' ? 200 : 160
+    set(s => ({ error: null, nodes: [...s.nodes, rawToRFNode({ id, type, position, data, width, height })] }))
+    const creation = api.createNode({ id, projectId, type, position, data, width, height })
+    pendingNodes.set(id, creation)
     try {
-      const raw = await api.createNode({
-        projectId, type, position, data,
-        width: type === 'mainIdea' ? 320 : 280,
-        height: type === 'mainIdea' ? 200 : 160
-      })
-      const newNode = rawToRFNode(raw)
-      set(s => {
-        if (s.nodes.some(n => n.id === newNode.id)) return s
-        return { nodes: [...s.nodes, newNode] }
-      })
+      await creation
     } catch (err) {
+      if (get().projectId === projectId) set(s => ({
+        nodes: s.nodes.filter(n => n.id !== id),
+        edges: s.edges.filter(e => e.source !== id && e.target !== id),
+        error: 'Could not save the new card. Please try again.'
+      }))
       console.error('Failed to create node on server:', err)
+    } finally {
+      pendingNodes.delete(id)
     }
   },
 
@@ -236,6 +249,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
       nodes: s.nodes.map(n => n.id === id ? { ...n, data: newData } : n)
     }))
     try {
+      await pendingNodes.get(id)
       await api.updateNode(id, { data: newData })
     } catch (err) {
       console.error('Failed to update node data on server:', err)
@@ -247,6 +261,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
       nodes: s.nodes.map(n => n.id === id ? { ...n, position } : n)
     }))
     try {
+      await pendingNodes.get(id)
       await api.updateNode(id, { position })
     } catch (err) {
       console.error('Failed to update node position on server:', err)
@@ -258,6 +273,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
       nodes: s.nodes.map(n => n.id === id ? { ...n, style: { ...n.style, width, height } } : n)
     }))
     try {
+      await pendingNodes.get(id)
       await api.updateNode(id, { width, height })
     } catch (err) {
       console.error('Failed to update node dimensions on server:', err)
@@ -270,6 +286,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
       edges: s.edges.filter(e => e.source !== id && e.target !== id)
     }))
     try {
+      await pendingNodes.get(id)
       await api.deleteNode(id)
     } catch (err) {
       console.error('Failed to delete node on server:', err)
@@ -277,34 +294,42 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   },
 
   duplicateNode: async (id) => {
-    try {
-      const raw = await api.duplicateNode(id)
-      if (!raw) return
-      const newNode = rawToRFNode(raw)
-      set(s => ({ nodes: [...s.nodes, newNode] }))
-    } catch (err) {
-      console.error('Failed to duplicate node on server:', err)
-    }
+    const node = get().nodes.find(n => n.id === id)
+    if (node) await get().addNode(node.type as NodeType,
+      { x: node.position.x + 32, y: node.position.y + 32 }, structuredClone(node.data))
   },
 
   addEdge: async (source, target) => {
     const { projectId, edges } = get()
     if (!projectId) return
     if (source === target || edges.some(e => e.source === source && e.target === target)) return
+    const id = uuid()
+    set(s => ({ error: null, edges: [...s.edges, rawToRFEdge({ id, source, target })] }))
+    const creation = Promise.all([pendingNodes.get(source), pendingNodes.get(target)])
+      .then(() => api.createEdge({ id, projectId, source, target }))
+    pendingEdges.set(id, creation)
     try {
-      const raw = await api.createEdge({ projectId, source, target })
+      const raw = await creation
       const edge = rawToRFEdge(raw)
-      set(s => s.edges.some(e => e.id === edge.id || (e.source === source && e.target === target))
-        ? s : { edges: [...s.edges, edge] })
+      if (get().projectId === projectId) set(s => ({
+        edges: s.edges.map(e => e.id === id ? { ...e, ...edge } : e)
+      }))
     } catch (err) {
+      if (get().projectId === projectId) set(s => ({
+        edges: s.edges.filter(e => e.id !== id),
+        error: 'Could not save the connection. Please try again.'
+      }))
       console.error('Failed to add edge on server:', err)
+    } finally {
+      pendingEdges.delete(id)
     }
   },
 
   deleteEdge: async (id) => {
     set(s => ({ edges: s.edges.filter(e => e.id !== id) }))
     try {
-      await api.deleteEdge(id)
+      const created = await pendingEdges.get(id)
+      await api.deleteEdge(created?.id ?? id)
     } catch (err) {
       console.error('Failed to delete edge on server:', err)
     }

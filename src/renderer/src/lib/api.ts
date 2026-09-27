@@ -122,6 +122,7 @@ export async function getNodes(projectId: string): Promise<IdeaNode[]> {
 }
 
 export async function createNode(input: {
+  id?: string
   projectId: string
   type: NodeType
   position: { x: number; y: number }
@@ -131,7 +132,7 @@ export async function createNode(input: {
 }): Promise<IdeaNode> {
   const now = Date.now()
   const row = {
-    id: uuid(),
+    id: input.id ?? uuid(),
     project_id: input.projectId,
     type: input.type,
     position_x: input.position.x,
@@ -205,6 +206,7 @@ export async function getEdges(projectId: string): Promise<IdeaEdge[]> {
 }
 
 export async function createEdge(input: {
+  id?: string
   projectId: string
   source: string
   target: string
@@ -222,7 +224,7 @@ export async function createEdge(input: {
   if (existing) return rowToEdge(existing as Record<string, unknown>)
 
   const row = {
-    id: uuid(),
+    id: input.id ?? uuid(),
     project_id: input.projectId,
     source_id: input.source,
     target_id: input.target,

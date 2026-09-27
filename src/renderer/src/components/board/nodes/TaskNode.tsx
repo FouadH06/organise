@@ -8,8 +8,10 @@ import ConfirmDialog from '../ConfirmDialog'
 import ColorPicker from './ColorPicker'
 import './NodeCard.css'
 import './TaskNode.css'
+import { useCardGrowth } from '../../../hooks/useCardGrowth'
 
 export function TaskNode({ id, data, selected }: NodeProps<NodeData>) {
+  const cardRef = useCardGrowth(id)
   const { updateNodeData, updateNodeDimensions, deleteNode, duplicateNode } = useBoardStore()
   const [editTitle, setEditTitle] = useState(false)
   const [titleVal, setTitleVal] = useState(data.title)
@@ -58,10 +60,12 @@ export function TaskNode({ id, data, selected }: NodeProps<NodeData>) {
         lineClassName="node-resizer-line"
         handleClassName="node-resizer-handle"
         onResizeEnd={(_evt, params) => {
+          useBoardStore.getState().updateNodePosition(id, { x: params.x, y: params.y })
           updateNodeDimensions(id, Math.round(params.width), Math.round(params.height))
         }}
       />
       <div
+        ref={cardRef}
         className={`node-card task-card ${selected ? 'selected' : ''} ${data.completed ? 'task-done' : ''} ${isLight ? 'node-card-light' : ''}`}
         style={{
           '--node-accent': '#10b981',
@@ -84,7 +88,7 @@ export function TaskNode({ id, data, selected }: NodeProps<NodeData>) {
             {editTitle ? (
               <input
                 autoFocus
-                className="node-title-input"
+                className="node-title-input nodrag"
                 value={titleVal}
                 onChange={e => setTitleVal(e.target.value)}
                 onBlur={saveTitle}
