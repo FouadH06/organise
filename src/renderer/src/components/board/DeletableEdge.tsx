@@ -1,5 +1,6 @@
-import { BaseEdge, EdgeLabelRenderer, getBezierPath, getSmoothStepPath, useReactFlow, type EdgeProps } from 'reactflow'
+import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type EdgeProps } from 'reactflow'
 import { X } from 'lucide-react'
+import { useBoardStore } from '../../store/boardStore'
 import './DeletableEdge.css'
 
 export function DeletableEdge({
@@ -7,7 +8,7 @@ export function DeletableEdge({
   sourcePosition, targetPosition,
   selected, markerEnd, style
 }: EdgeProps) {
-  const { setEdges } = useReactFlow()
+  const deleteEdge = useBoardStore(s => s.deleteEdge)
 
   const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX, sourceY, sourcePosition,
@@ -16,10 +17,7 @@ export function DeletableEdge({
   })
 
   const handleDelete = () => {
-    // Persist to DB via the board callbacks
-    window.__boardCallbacks?.onDeleteEdge?.(id)
-    // Remove from React Flow state
-    setEdges(es => es.filter(e => e.id !== id))
+    deleteEdge(id)
   }
 
   return (

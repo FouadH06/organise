@@ -45,7 +45,13 @@ export default function Dashboard({ onOpenProject }: Props) {
       {/* Content */}
       <main className="dash-content">
         {loading ? (
-          <div className="dash-loading"><div className="spinner" /></div>
+          <div className="dash-loading animate-fade">
+            <div className="app-loading-box">
+              <div className="spinner" style={{ width: 32, height: 32, borderWidth: 3 }} />
+              <div className="app-loading-title">Loading Projects…</div>
+              <div className="app-loading-subtitle">Fetching your workspace from cloud</div>
+            </div>
+          </div>
         ) : (
           <>
             {/* Active projects */}

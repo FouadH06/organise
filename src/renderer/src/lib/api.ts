@@ -210,6 +210,17 @@ export async function createEdge(input: {
   target: string
   label?: string
 }): Promise<IdeaEdge> {
+  const { data: existing, error: findError } = await supabase
+    .from('edges')
+    .select('*')
+    .eq('project_id', input.projectId)
+    .eq('source_id', input.source)
+    .eq('target_id', input.target)
+    .limit(1)
+    .maybeSingle()
+  if (findError) throw findError
+  if (existing) return rowToEdge(existing as Record<string, unknown>)
+
   const row = {
     id: uuid(),
     project_id: input.projectId,

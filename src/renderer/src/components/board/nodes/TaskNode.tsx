@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Handle, Position, NodeResizer, type NodeProps } from 'reactflow'
 import { useBoardStore } from '../../../store/boardStore'
 import type { NodeData, SubTask } from '../../../types'
@@ -16,6 +16,8 @@ export function TaskNode({ id, data, selected }: NodeProps<NodeData>) {
   const [newSubtask, setNewSubtask] = useState('')
   const [addingSubtask, setAddingSubtask] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
+
+  useEffect(() => { if (!editTitle) setTitleVal(data.title) }, [data.title, editTitle])
 
   const saveTitle = useCallback(() => {
     setEditTitle(false)

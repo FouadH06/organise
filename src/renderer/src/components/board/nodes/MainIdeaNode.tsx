@@ -17,6 +17,9 @@ export function MainIdeaNode({ id, data, selected }: NodeProps<NodeData>) {
   const [showConfirm, setShowConfirm] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  useEffect(() => { if (!editTitle) setTitleVal(data.title) }, [data.title, editTitle])
+  useEffect(() => { if (!editDesc) setDescVal(data.description ?? '') }, [data.description, editDesc])
+
   // Auto-resize textarea on mount/change
   useEffect(() => {
     if (editDesc && textareaRef.current) {

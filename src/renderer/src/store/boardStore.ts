@@ -69,14 +69,14 @@ function rawToRFNode(n: IdeaNode): Node<NodeData> {
     id: n.id, type: n.type,
     position: n.position,
     data: safeParseJson(n.data),
-    style: { width: w, minHeight: h }
+    style: { width: w, height: h }
   }
 }
 
 function rawToRFEdge(e: IdeaEdge): Edge {
   return {
     id: e.id, source: e.source, target: e.target,
-    type: 'smoothstep', label: e.label,
+    type: 'deletable', label: e.label,
     style: { stroke: 'var(--border-active)', strokeWidth: 1.5 },
     markerEnd: { type: 'arrowclosed' as const, color: 'var(--border-active)' }
   }
@@ -95,7 +95,72 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     // Unsubscribe from any previous channel
     get().unloadBoard()
 
-    set({ loading: true, projectId })
+    set({ loading: true, projectId, nodes: [], edges: [] })
+
+    // Subscribe before fetching the initial snapshot. This closes the race where
+    // a collaborator could add/update a card while this client was loading it.
+    const channel = supabase
+      .channel(`board:${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'nodes', filter: `project_id=eq.${projectId}` },
+        (payload) => {
+          if (get().projectId !== projectId) return
+          if (payload.eventType === 'INSERT') {
+            const raw = payload.new
+            const node = rawToRFNode({
+              id: raw.id, type: raw.type,
+              position: { x: raw.position_x, y: raw.position_y },
+              data: safeParseJson(raw.data), width: raw.width, height: raw.height
+            })
+            set(s => s.nodes.some(n => n.id === node.id) ? s : { nodes: [...s.nodes, node] })
+          } else if (payload.eventType === 'UPDATE') {
+            const raw = payload.new
+            const updated = rawToRFNode({
+              id: raw.id, type: raw.type,
+              position: { x: raw.position_x, y: raw.position_y },
+              data: safeParseJson(raw.data), width: raw.width, height: raw.height
+            })
+            set(s => ({ nodes: s.nodes.map(n => n.id === raw.id ? updated : n) }))
+          } else if (payload.eventType === 'DELETE') {
+            const delId = (payload.old as { id?: string })?.id
+            if (delId) set(s => ({
+              nodes: s.nodes.filter(n => n.id !== delId),
+              edges: s.edges.filter(e => e.source !== delId && e.target !== delId)
+            }))
+          }
+        }
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'edges', filter: `project_id=eq.${projectId}` },
+        (payload) => {
+          if (get().projectId !== projectId) return
+          if (payload.eventType === 'INSERT') {
+            const edge = rawToRFEdge({
+              id: payload.new.id, source: payload.new.source_id,
+              target: payload.new.target_id, label: payload.new.label
+            })
+            set(s => s.edges.some(e => e.id === edge.id || (e.source === edge.source && e.target === edge.target))
+              ? s : { edges: [...s.edges, edge] })
+          } else if (payload.eventType === 'DELETE') {
+            const delId = (payload.old as { id?: string })?.id
+            if (delId) set(s => ({ edges: s.edges.filter(e => e.id !== delId) }))
+          }
+        }
+      )
+
+    set({ _channel: channel })
+    await new Promise<void>((resolve) => {
+      let settled = false
+      const finish = () => {
+        if (!settled) { settled = true; resolve() }
+      }
+      const timer = window.setTimeout(finish, 3000)
+      channel.subscribe(status => {
+        if (status === 'SUBSCRIBED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          window.clearTimeout(timer)
+          finish()
+        }
+      })
+    })
+
     try {
       const [rawNodes, rawEdges, viewport, categories] = await Promise.all([
         api.getNodes(projectId),
@@ -116,85 +181,23 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
         }
       } catch {}
 
-      set({
-        nodes: rawNodes.map(rawToRFNode),
-        edges: rawEdges.map(rawToRFEdge),
+      if (get().projectId !== projectId) return
+
+      const snapshotNodes = rawNodes.map(rawToRFNode)
+      const snapshotEdges = rawEdges.map(rawToRFEdge)
+      set(s => ({
+        // Preserve any realtime INSERT that arrived after the snapshot query.
+        nodes: [...snapshotNodes.filter(n => !s.nodes.some(live => live.id === n.id)), ...s.nodes],
+        edges: [...snapshotEdges.filter(e => !s.edges.some(live => live.id === e.id)), ...s.edges],
         viewport: userVp,
         categories: categories as Category[],
         loading: false
-      })
+      }))
     } catch (err) {
       console.error('Failed to load board data:', err)
       set({ loading: false })
     }
 
-    // ── Real-time subscription ─────────────────────────────────────────────
-    const channel = supabase
-      .channel(`board:${projectId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'nodes', filter: `project_id=eq.${projectId}` },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const raw = payload.new
-            const node = rawToRFNode({
-              id: raw.id,
-              type: raw.type,
-              position: { x: raw.position_x, y: raw.position_y },
-              data: safeParseJson(raw.data),
-              width: raw.width,
-              height: raw.height
-            })
-            set(s => {
-              if (s.nodes.some(n => n.id === node.id)) return s
-              return { nodes: [...s.nodes, node] }
-            })
-          } else if (payload.eventType === 'UPDATE') {
-            const raw = payload.new
-            const updated = rawToRFNode({
-              id: raw.id,
-              type: raw.type,
-              position: { x: raw.position_x, y: raw.position_y },
-              data: safeParseJson(raw.data),
-              width: raw.width,
-              height: raw.height
-            })
-            set(s => ({
-              nodes: s.nodes.map(n => n.id === raw.id ? updated : n)
-            }))
-          } else if (payload.eventType === 'DELETE') {
-            const delId = (payload.old as { id?: string })?.id
-            if (delId) {
-              set(s => ({
-                nodes: s.nodes.filter(n => n.id !== delId),
-                edges: s.edges.filter(e => e.source !== delId && e.target !== delId)
-              }))
-            }
-          }
-        }
-      )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'edges', filter: `project_id=eq.${projectId}` },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            const edge = rawToRFEdge({
-              id: payload.new.id,
-              source: payload.new.source_id,
-              target: payload.new.target_id,
-              label: payload.new.label
-            })
-            set(s => {
-              if (s.edges.some(e => e.id === edge.id)) return s
-              return { edges: [...s.edges, edge] }
-            })
-          } else if (payload.eventType === 'DELETE') {
-            const delId = (payload.old as { id?: string })?.id
-            if (delId) {
-              set(s => ({ edges: s.edges.filter(e => e.id !== delId) }))
-            }
-          }
-        }
-      )
-      .subscribe()
-
-    set({ _channel: channel })
   },
 
   unloadBoard: () => {
@@ -252,7 +255,7 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
 
   updateNodeDimensions: async (id, width, height) => {
     set(s => ({
-      nodes: s.nodes.map(n => n.id === id ? { ...n, style: { ...n.style, width, minHeight: height } } : n)
+      nodes: s.nodes.map(n => n.id === id ? { ...n, style: { ...n.style, width, height } } : n)
     }))
     try {
       await api.updateNode(id, { width, height })
@@ -285,11 +288,14 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
   },
 
   addEdge: async (source, target) => {
-    const { projectId } = get()
+    const { projectId, edges } = get()
     if (!projectId) return
+    if (source === target || edges.some(e => e.source === source && e.target === target)) return
     try {
       const raw = await api.createEdge({ projectId, source, target })
-      set(s => ({ edges: [...s.edges, rawToRFEdge(raw)] }))
+      const edge = rawToRFEdge(raw)
+      set(s => s.edges.some(e => e.id === edge.id || (e.source === source && e.target === target))
+        ? s : { edges: [...s.edges, edge] })
     } catch (err) {
       console.error('Failed to add edge on server:', err)
     }

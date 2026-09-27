@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useRef, useState } from 'react'
 import ReactFlow, {
   Background, Controls, BackgroundVariant,
-  useNodesState, useEdgesState, addEdge, MiniMap,
+  useNodesState, useEdgesState, MiniMap,
   type OnConnect, type NodeDragHandler, type OnEdgesDelete
 } from 'reactflow'
 import 'reactflow/dist/style.css'
@@ -10,6 +10,7 @@ import type { Project, NodeType, ContextMenuState, NodeData } from '../../types'
 import { MainIdeaNode } from './nodes/MainIdeaNode'
 import { TaskNode } from './nodes/TaskNode'
 import { GenericNode } from './nodes/GenericNode'
+import { DeletableEdge } from './DeletableEdge'
 import ContextMenu from './ContextMenu'
 import Sidebar from './Sidebar'
 import { ArrowLeft, Maximize2 } from 'lucide-react'
@@ -41,6 +42,8 @@ const NODE_TYPES = {
   goal:     GoalNode,
   subIdea:  SubIdeaNode
 }
+
+const EDGE_TYPES = { deletable: DeletableEdge }
 
 interface Props {
   project: Project
@@ -192,6 +195,15 @@ export default function Board({ project, onBack }: Props) {
 
         {/* Canvas */}
         <div className="board-canvas" ref={flowWrapper}>
+          {store.loading && (
+            <div className="canvas-loading-overlay animate-fade">
+              <div className="app-loading-box">
+                <div className="spinner" style={{ width: 34, height: 34, borderWidth: 3 }} />
+                <div className="app-loading-title">Loading Canvas…</div>
+                <div className="app-loading-subtitle">Synchronizing cards and live workspace</div>
+              </div>
+            </div>
+          )}
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -207,6 +219,7 @@ export default function Board({ project, onBack }: Props) {
               rfInstance.current = instance
             }}
             nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
             minZoom={0.2}
             maxZoom={2.0}
             snapToGrid

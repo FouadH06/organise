@@ -36,6 +36,9 @@ export function GenericNode({ id, data, selected, type }: NodeProps<NodeData> & 
   const [showConfirm, setShowConfirm] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  useEffect(() => { if (!editTitle) setTitleVal(data.title) }, [data.title, editTitle])
+  useEffect(() => { if (!editDesc) setDescVal(data.description ?? '') }, [data.description, editDesc])
+
   const meta = NODE_TYPE_META[type as NodeType] ?? { label: type, icon: '◆', color: '#888' }
 
   // Auto-resize textarea on mount/change
