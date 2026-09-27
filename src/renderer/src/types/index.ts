@@ -34,6 +34,7 @@ export interface NodeData {
   subtasks?: SubTask[]
   url?: string
   accentColor?: string
+  customBg?: string
   collapsed?: boolean
 }
 

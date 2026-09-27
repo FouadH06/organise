@@ -149,7 +149,7 @@ export async function createNode(input: {
 
 export async function updateNode(
   id: string,
-  updates: { data?: NodeData; position?: { x: number; y: number } }
+  updates: { data?: NodeData; position?: { x: number; y: number }; width?: number; height?: number }
 ): Promise<{ success: boolean }> {
   const patch: Record<string, unknown> = { updated_at: Date.now() }
   if (updates.data !== undefined) patch.data = JSON.stringify(updates.data)
@@ -157,6 +157,8 @@ export async function updateNode(
     patch.position_x = updates.position.x
     patch.position_y = updates.position.y
   }
+  if (updates.width !== undefined) patch.width = updates.width
+  if (updates.height !== undefined) patch.height = updates.height
   const { error } = await supabase.from('nodes').update(patch).eq('id', id)
   if (error) throw error
   return { success: true }

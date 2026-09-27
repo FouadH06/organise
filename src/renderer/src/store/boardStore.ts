@@ -23,6 +23,7 @@ interface BoardStore {
   addNode: (type: NodeType, position: { x: number; y: number }, initialData?: Partial<NodeData>) => Promise<void>
   updateNodeData: (id: string, data: Partial<NodeData>) => Promise<void>
   updateNodePosition: (id: string, position: { x: number; y: number }) => Promise<void>
+  updateNodeDimensions: (id: string, width: number, height: number) => Promise<void>
   deleteNode: (id: string) => Promise<void>
   duplicateNode: (id: string) => Promise<void>
   addEdge: (source: string, target: string) => Promise<void>
@@ -62,11 +63,13 @@ function safeParseJson(val: unknown): NodeData {
 }
 
 function rawToRFNode(n: IdeaNode): Node<NodeData> {
+  const w = n.width ?? (n.type === 'mainIdea' ? 320 : 280)
+  const h = n.height ?? (n.type === 'mainIdea' ? 200 : 160)
   return {
     id: n.id, type: n.type,
     position: n.position,
     data: safeParseJson(n.data),
-    style: { width: n.width, height: n.height }
+    style: { width: w, minHeight: h }
   }
 }
 
@@ -244,6 +247,17 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
       await api.updateNode(id, { position })
     } catch (err) {
       console.error('Failed to update node position on server:', err)
+    }
+  },
+
+  updateNodeDimensions: async (id, width, height) => {
+    set(s => ({
+      nodes: s.nodes.map(n => n.id === id ? { ...n, style: { ...n.style, width, minHeight: height } } : n)
+    }))
+    try {
+      await api.updateNode(id, { width, height })
+    } catch (err) {
+      console.error('Failed to update node dimensions on server:', err)
     }
   },
 

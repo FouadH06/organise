@@ -121,6 +121,110 @@
 }
 .sidebar-empty-hint { font-size: 11px; color: var(--text-dim); line-height: 1.5; }
 
+.sidebar-view-toggle {
+  display: flex;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1px;
+}
+.sidebar-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.sidebar-toggle-btn.active {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Tree container & rows */
+.sidebar-tree-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 4px;
+}
+.sidebar-tree-node {
+  display: flex;
+  flex-direction: column;
+}
+.sidebar-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-right: 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.12s;
+  user-select: none;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.sidebar-tree-row:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+}
+.sidebar-folder-row {
+  font-weight: 500;
+  color: var(--text-dim);
+}
+.sidebar-tree-toggle {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  padding: 0;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.sidebar-tree-toggle:hover {
+  color: var(--text-primary);
+}
+.sidebar-tree-spacer {
+  width: 14px;
+  flex-shrink: 0;
+}
+.sidebar-tree-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.sidebar-tree-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-tree-badge {
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+  background: var(--bg-card);
+  color: var(--text-dim);
+  border-radius: 10px;
+  padding: 1px 5px;
+  flex-shrink: 0;
+}
+.sidebar-tree-children {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px dashed var(--border);
+  margin-left: 14px;
+}
+
 /* Categories */
 .sidebar-section-header {
   display: flex;

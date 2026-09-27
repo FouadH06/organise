@@ -5,14 +5,16 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   width: 100%;
-  height: 100%;
-  min-width: 220px;
+  height: auto;
+  min-height: 100%;
+  min-width: 200px;
   display: flex;
   flex-direction: column;
   transition: border-color 0.15s, box-shadow 0.15s;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   font-size: 13px;
+  backdrop-filter: blur(8px);
 }
 
 .node-card:hover {
@@ -21,7 +23,55 @@
 
 .node-card.selected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), 0 0 20px var(--accent-glow);
+  box-shadow: 0 0 0 1.5px var(--accent), 0 0 24px var(--accent-glow);
+}
+
+/* Light / White card theme overrides */
+.node-card-light {
+  color: #0f172a !important;
+}
+.node-card-light .node-title {
+  color: #0f172a !important;
+}
+.node-card-light .node-title-input {
+  color: #0f172a !important;
+}
+.node-card-light .node-desc {
+  color: #334155 !important;
+}
+.node-card-light .node-desc-input {
+  color: #0f172a !important;
+}
+.node-card-light .node-desc-empty {
+  color: #64748b !important;
+}
+.node-card-light .btn-icon {
+  color: #475569 !important;
+}
+.node-card-light .btn-icon:hover {
+  color: #0f172a !important;
+  background: rgba(0,0,0,0.08) !important;
+}
+.node-card-light .node-footer {
+  border-top-color: rgba(0,0,0,0.1) !important;
+}
+.node-card-light .node-select {
+  color: #334155 !important;
+  border-color: rgba(0,0,0,0.2) !important;
+}
+
+/* Resizer handle styling */
+.node-resizer-handle {
+  width: 10px !important;
+  height: 10px !important;
+  background: var(--accent) !important;
+  border: 1.5px solid #ffffff !important;
+  border-radius: 3px !important;
+  z-index: 10 !important;
+}
+.node-resizer-line {
+  border-color: var(--accent) !important;
+  border-width: 1px !important;
 }
 
 /* Left accent stripe (per node type) */

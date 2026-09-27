@@ -184,6 +184,7 @@ export default function Board({ project, onBack }: Props) {
           <Sidebar
             project={project}
             nodes={nodes}
+            edges={edges}
             onAddNode={(type) => handleCreateNode(type)}
             onFocusNode={handleFocusNode}
           />
