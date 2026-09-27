@@ -19,8 +19,13 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   fetchProjects: async () => {
     set({ loading: true })
-    const projects = await api.getProjects()
-    set({ projects, loading: false })
+    try {
+      const projects = await api.getProjects()
+      set({ projects, loading: false })
+    } catch (err) {
+      console.error('Failed to load projects:', err)
+      set({ loading: false })
+    }
   },
 
   createProject: async (name, description) => {

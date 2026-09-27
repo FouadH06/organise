@@ -83,20 +83,25 @@ export const useBoardStore = create<BoardStore>((set, get) => ({
     get().unloadBoard()
 
     set({ loading: true, projectId })
-    const [rawNodes, rawEdges, viewport, categories] = await Promise.all([
-      api.getNodes(projectId),
-      api.getEdges(projectId),
-      api.getViewport(projectId),
-      api.getCategories(projectId)
-    ])
+    try {
+      const [rawNodes, rawEdges, viewport, categories] = await Promise.all([
+        api.getNodes(projectId),
+        api.getEdges(projectId),
+        api.getViewport(projectId),
+        api.getCategories(projectId)
+      ])
 
-    set({
-      nodes: rawNodes.map(rawToRFNode),
-      edges: rawEdges.map(rawToRFEdge),
-      viewport,
-      categories: categories as Category[],
-      loading: false
-    })
+      set({
+        nodes: rawNodes.map(rawToRFNode),
+        edges: rawEdges.map(rawToRFEdge),
+        viewport,
+        categories: categories as Category[],
+        loading: false
+      })
+    } catch (err) {
+      console.error('Failed to load board data:', err)
+      set({ loading: false })
+    }
 
     // ── Real-time subscription ─────────────────────────────────────────────
     const channel = supabase

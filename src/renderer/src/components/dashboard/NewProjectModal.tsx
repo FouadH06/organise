@@ -15,12 +15,21 @@ export default function NewProjectModal({ onClose, onCreate }: Props) {
   const [desc, setDesc] = useState('')
   const [loading, setLoading] = useState(false)
 
+  const [error, setError] = useState<string | null>(null)
+
   const handleCreate = async () => {
     if (!name.trim()) return
     setLoading(true)
-    const project = await createProject(name.trim(), desc.trim())
-    setLoading(false)
-    onCreate(project)
+    setError(null)
+    try {
+      const project = await createProject(name.trim(), desc.trim())
+      onCreate(project)
+    } catch (err: any) {
+      console.error('Failed to create project:', err)
+      setError(err?.message || 'Failed to create project. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -32,6 +41,11 @@ export default function NewProjectModal({ onClose, onCreate }: Props) {
         </div>
 
         <div className="modal-body">
+          {error && (
+            <div style={{ color: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', padding: '8px 12px', borderRadius: '6px', fontSize: '13px', marginBottom: '14px', border: '1px solid rgba(239,68,68,0.2)' }}>
+              {error}
+            </div>
+          )}
           <div className="form-group">
             <label>Project Name *</label>
             <input
