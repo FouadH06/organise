@@ -7,6 +7,7 @@ import { Copy, Trash2, Plus } from 'lucide-react'
 import { v4 as uuidv4 } from 'uuid'
 import ConfirmDialog from '../ConfirmDialog'
 import ColorPicker from './ColorPicker'
+import { cardColorStyle } from '../../../lib/cardColors'
 import './NodeCard.css'
 import './TaskNode.css'
 import { useCardGrowth } from '../../../hooks/useCardGrowth'
@@ -50,7 +51,6 @@ export function TaskNode({ id, data, selected }: NodeProps<NodeData>) {
     updateNodeData(id, { subtasks: (data.subtasks ?? []).filter(st => st.id !== stId) })
   }
 
-  const isLight = data.customBg === '#ffffff'
 
   return (
     <>
@@ -67,10 +67,10 @@ export function TaskNode({ id, data, selected }: NodeProps<NodeData>) {
       />
       <div
         ref={cardRef}
-        className={`node-card task-card ${selected ? 'selected' : ''} ${data.completed ? 'task-done' : ''} ${isLight ? 'node-card-light' : ''}`}
+        className={`node-card task-card ${selected ? 'selected' : ''} ${data.completed ? 'task-done' : ''}`}
         style={{
           '--node-accent': '#10b981',
-          ...(data.customBg ? { background: data.customBg } : {})
+          ...cardColorStyle(data.customBg)
         } as React.CSSProperties}
       >
         <CardHandles />
@@ -84,7 +84,7 @@ export function TaskNode({ id, data, selected }: NodeProps<NodeData>) {
             onChange={toggleComplete}
           />
           <div className="node-title-wrap">
-            <div className="node-label" style={{ color: '#10b981' }}>Task</div>
+            <div className="node-label">Task</div>
             {editTitle ? (
               <input
                 autoFocus
@@ -106,7 +106,7 @@ export function TaskNode({ id, data, selected }: NodeProps<NodeData>) {
               </div>
             )}
           </div>
-          <div className="node-actions">
+          <div className="node-actions nodrag nopan">
             <ColorPicker
               currentColor={data.customBg}
               onSelect={(bg) => updateNodeData(id, { customBg: bg })}
@@ -153,7 +153,7 @@ export function TaskNode({ id, data, selected }: NodeProps<NodeData>) {
         {/* Footer */}
         <div className="node-footer">
           <select
-            className="node-select"
+            className="node-select nodrag"
             value={data.priority ?? 'medium'}
             onChange={e => updateNodeData(id, { priority: e.target.value as NodeData['priority'] })}
           >

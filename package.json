@@ -6,6 +6,8 @@
   "author": "IdeaBoard",
   "private": true,
   "scripts": {
+    "test": "node tests/board-regressions.cjs && node tests/concurrent-saves.cjs",
+    "typecheck:web": "tsc --noEmit -p tsconfig.renderer.json",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "build:win": "electron-vite build && electron-builder --win",

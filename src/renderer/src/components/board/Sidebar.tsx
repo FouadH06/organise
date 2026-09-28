@@ -10,7 +10,7 @@ import type { NodeData, NodeType, Project } from '../../types'
 import { NODE_TYPE_META } from '../../types'
 import './Sidebar.css'
 
-const ICON_MAP: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
+const ICON_MAP: Record<string, React.ComponentType<{ size?: string | number; color?: string }>> = {
   Lightbulb, CheckSquare, FileText, Sparkles, Search,
   Link2, Zap, XCircle, Target, Gem
 }

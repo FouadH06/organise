@@ -113,13 +113,19 @@ export async function duplicateProject(id: string): Promise<Project> {
 // ─── Nodes ────────────────────────────────────────────────────────────────────
 
 export async function getNodes(projectId: string): Promise<IdeaNode[]> {
-  const { data, error } = await supabase
-    .from('nodes')
-    .select('*')
-    .eq('project_id', projectId)
-    .order('created_at')
-  if (error) throw error
-  return (data ?? []).map(r => rowToNode(r as Record<string, unknown>))
+  const rows = await readBoardRows('nodes', projectId)
+  return rows.map(rowToNode)
+}
+
+async function readBoardRows(table: 'nodes' | 'edges', projectId: string) {
+  const rows: Record<string, unknown>[] = []
+  for (let offset = 0; ; offset += 500) {
+    const { data, error } = await supabase.from(table).select('*')
+      .eq('project_id', projectId).order('id').range(offset, offset + 499)
+    if (error) throw error
+    rows.push(...(data ?? []))
+    if (!data || data.length < 500) return rows
+  }
 }
 
 export async function createNode(input: {
@@ -144,26 +150,46 @@ export async function createNode(input: {
     created_at: now,
     updated_at: now
   }
-  const { data, error } = await supabase.from('nodes').insert(row).select().single()
+  const { data: inserted, error } = await supabase.from('nodes')
+    .upsert(row, { onConflict: 'id', ignoreDuplicates: true }).select()
   if (error) throw error
-  return rowToNode(data as Record<string, unknown>)
+  if (inserted?.length) return rowToNode(inserted[0])
+  // A response may have been lost after a successful insert. Retry by ID
+  // without overwriting edits already made to that card.
+  const { data, error: readError } = await supabase.from('nodes').select('*').eq('id', row.id).single()
+  if (readError) throw readError
+  return rowToNode(data)
 }
 
 export async function updateNode(
   id: string,
-  updates: { data?: NodeData; position?: { x: number; y: number }; width?: number; height?: number }
+  updates: { data?: Partial<NodeData>; position?: { x: number; y: number }; width?: number; height?: number }
 ): Promise<{ success: boolean }> {
-  const patch: Record<string, unknown> = { updated_at: Date.now() }
-  if (updates.data !== undefined) patch.data = JSON.stringify(updates.data)
-  if (updates.position !== undefined) {
-    patch.position_x = updates.position.x
-    patch.position_y = updates.position.y
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const { data: current, error: readError } = await supabase.from('nodes')
+      .select('data,updated_at').eq('id', id).single()
+    if (readError) throw readError
+    const patch: Record<string, unknown> = {
+      updated_at: Math.max(Date.now(), Number(current.updated_at ?? 0) + 1)
+    }
+    if (updates.data !== undefined) {
+      const data = typeof current.data === 'string' ? JSON.parse(current.data) : current.data
+      patch.data = JSON.stringify({ ...data, ...updates.data })
+    }
+    if (updates.position !== undefined) {
+      patch.position_x = updates.position.x
+      patch.position_y = updates.position.y
+    }
+    if (updates.width !== undefined) patch.width = updates.width
+    if (updates.height !== undefined) patch.height = updates.height
+    const query = supabase.from('nodes').update(patch).eq('id', id)
+    const { data: saved, error } = await (current.updated_at == null
+      ? query.is('updated_at', null) : query.eq('updated_at', current.updated_at)).select('id')
+    if (error) throw error
+    if (saved?.length) return { success: true }
+    // Another writer won. Read its changes, merge our fields, and try again.
   }
-  if (updates.width !== undefined) patch.width = updates.width
-  if (updates.height !== undefined) patch.height = updates.height
-  const { error } = await supabase.from('nodes').update(patch).eq('id', id)
-  if (error) throw error
-  return { success: true }
+  throw new Error('This card is being edited elsewhere. Please retry your changes.')
 }
 
 export async function deleteNode(id: string): Promise<{ success: boolean }> {
@@ -198,12 +224,7 @@ export async function restoreNode(nodeData: object): Promise<IdeaNode> {
 // ─── Edges ────────────────────────────────────────────────────────────────────
 
 export async function getEdges(projectId: string): Promise<IdeaEdge[]> {
-  const { data, error } = await supabase
-    .from('edges')
-    .select('*')
-    .eq('project_id', projectId)
-  if (error) throw error
-  return (data ?? []).map(r => rowToEdge(r as Record<string, unknown>))
+  return (await readBoardRows('edges', projectId)).map(rowToEdge)
 }
 
 export async function createEdge(input: {

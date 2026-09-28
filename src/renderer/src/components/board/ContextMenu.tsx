@@ -6,7 +6,7 @@ import {
 import { NODE_TYPE_META, type NodeType } from '../../types'
 import './ContextMenu.css'
 
-const ICON_MAP: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
+const ICON_MAP: Record<string, React.ComponentType<{ size?: string | number; color?: string }>> = {
   Lightbulb, CheckSquare, FileText, Sparkles, Search,
   Link2, Zap, XCircle, Target, Gem, LayoutList
 }

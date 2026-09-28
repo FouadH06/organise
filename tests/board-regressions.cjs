@@ -55,11 +55,11 @@ async function main() {
   finishNode(nodeInput)
   await Promise.all([creation, edit])
   assert.equal(updates[0].patch.data.title, 'Written before creation finished')
-  callbacks.nodes({ eventType: 'UPDATE', new: { id, type: 'note', data: updates[0].patch.data,
+  callbacks.nodes({ eventType: 'UPDATE', new: { id, project_id: 'test', type: 'note', data: updates[0].patch.data,
     position_x: 4, position_y: 8, width: 280, height: 160 } })
   assert.equal(store.getState().nodes[0].selected, true, 'save echo keeps resize handles selected')
   store.getState().setNodes(store.getState().nodes.map(n => ({ ...n, resizing: true, style: { width: 420, height: 340 } })))
-  callbacks.nodes({ eventType: 'UPDATE', new: { id, type: 'note', data: { title: 'Remote edit' },
+  callbacks.nodes({ eventType: 'UPDATE', new: { id, project_id: 'test', type: 'note', data: { title: 'Remote edit' },
     position_x: 4, position_y: 8, width: 280, height: 160 } })
   assert.equal(store.getState().nodes[0].style.height, 340, 'remote edit cannot interrupt resizing')
 
@@ -94,14 +94,83 @@ async function main() {
   rejectEdge(new Error('Network unavailable'))
   await moved
   console.error = errorLogger
-  assert.ok(store.getState().edges.some(e => e.id === savedParent.id), 'failed reconnect restores old link')
-  assert.ok(!store.getState().edges.some(e => e.target === 'different-child'))
+  assert.ok(store.getState().edges.some(e => e.target === 'different-child'), 'unsaved intent remains visible for retry')
+  assert.ok(store.getState().error, 'failed reconnect is visible to the user')
+  assert.equal(store.getState().pendingSaves, 1)
+  const retry = store.getState().retrySaves()
+  finishEdge(edgeInput)
+  await retry
+  assert.equal(store.getState().pendingSaves, 0)
+  assert.equal(store.getState().error, null)
   const { encodeEdgeLabel, decodeEdgeLabel } = require('../src/renderer/src/lib/edgeHandles.ts')
   assert.deepEqual(decodeEdgeLabel(encodeEdgeLabel('Caption', 'top', 'left')),
     { label: 'Caption', sourceHandle: 'top', targetHandle: 'left' })
   assert.deepEqual(decodeEdgeLabel('Legacy label'),
     { label: 'Legacy label', sourceHandle: 'bottom', targetHandle: 'top' })
-  console.log('PASS: parent replacement, endpoint reconnection, failure rollback and saved connector sides')
+  console.log('PASS: parent replacement, endpoint reconnection, retry and saved connector sides')
+
+  let resolveSnapshot
+  api.getNodes = () => new Promise(resolve => { resolveSnapshot = resolve })
+  const loading = store.getState().loadBoard('test')
+  await new Promise(resolve => setImmediate(resolve))
+  callbacks.nodes({ eventType: 'UPDATE', new: { id: 'edited', project_id: 'test', type: 'note',
+    data: { title: 'New text' }, position_x: 0, position_y: 0, width: 280, height: 160 } })
+  callbacks.nodes({ eventType: 'DELETE', old: { id: 'deleted' } })
+  resolveSnapshot([node('edited'), node('deleted')])
+  await loading
+  assert.equal(store.getState().nodes.find(n => n.id === 'edited').data.title, 'New text')
+  assert.ok(!store.getState().nodes.some(n => n.id === 'deleted'), 'snapshot cannot resurrect deleted cards')
+  api.getNodes = async () => []
+
+  const successfulUpdate = api.updateNode
+  api.updateNode = async () => { throw new Error('Offline') }
+  await store.getState().updateNodeData('edited', { description: 'Keep this draft' })
+  assert.equal(store.getState().pendingSaves, 1)
+  assert.ok(store.getState().error)
+  await store.getState().updateNodeData('edited', { customBg: '#f5f5f2' })
+  callbacks.nodes({ eventType: 'UPDATE', new: { id: 'edited', project_id: 'test', type: 'note',
+    data: { title: 'Collaborator title', description: 'Old text' }, position_x: 0, position_y: 0 } })
+  assert.equal(store.getState().nodes[0].data.description, 'Keep this draft', 'pending fields survive remote updates')
+  assert.equal(store.getState().nodes[0].data.title, 'Collaborator title', 'other fields still update live')
+  api.updateNode = successfulUpdate
+  await store.getState().retrySaves()
+  assert.equal(store.getState().pendingSaves, 0)
+  assert.deepEqual(updates.at(-2).patch.data, { description: 'Keep this draft' }, 'save only edited fields')
+  assert.deepEqual(updates.at(-1).patch.data, { customBg: '#f5f5f2' })
+
+  const deletions = []
+  api.deleteNode = async id => { deletions.push(id) }
+  const { applyBoardNodeChanges } = require('../src/renderer/src/lib/nodeChanges.ts')
+  applyBoardNodeChanges([{ type: 'remove', id: 'edited' }], store.getState())
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(deletions, ['edited'], 'keyboard removal reaches persistence')
+  assert.equal(store.getState().nodes.length, 0)
+
+  let firstSnapshot
+  api.getNodes = () => new Promise(resolve => { firstSnapshot = resolve })
+  const firstLoad = store.getState().loadBoard('test')
+  await new Promise(resolve => setImmediate(resolve))
+  api.getNodes = async () => [node('fresh')]
+  await store.getState().loadBoard('test')
+  firstSnapshot([node('stale')])
+  await firstLoad
+  assert.deepEqual(store.getState().nodes.map(n => n.id), ['fresh'], 'old same-project load cannot overwrite new session')
+  console.log('PASS: load races, pending field protection, failure/retry order, keyboard deletion and cancelled loads')
+
+  const { CARD_COLORS, getCardColor } = require('../src/renderer/src/lib/cardColors.ts')
+  const luminance = hex => {
+    const rgb = hex.slice(1).match(/../g).map(v => parseInt(v, 16) / 255)
+      .map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+    return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722
+  }
+  for (const c of CARD_COLORS) {
+    for (const fg of [c.text, c.muted]) {
+      const [high, low] = [luminance(fg), luminance(c.bg)].sort((a, b) => b - a)
+      assert.ok((high + 0.05) / (low + 0.05) >= 4.5, c.label + ' text contrast')
+    }
+    assert.equal(getCardColor(c.legacy).id, c.id, 'old palette values migrate visually')
+  }
+  console.log('PASS: all palette text contrast ratios exceed 4.5:1; legacy colors map correctly')
 
   const nodes = [node('APP', 'mainIdea'), node('NOTE'), node('GOAL'), node('ISOLATED'), node('SECOND', 'mainIdea')]
   const edges = [

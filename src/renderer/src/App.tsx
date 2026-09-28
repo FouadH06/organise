@@ -3,8 +3,16 @@ import Dashboard from './components/dashboard/Dashboard'
 import Board from './components/board/Board'
 import type { Project } from './types'
 import { useProjectStore } from './store/projectStore'
+import { useBoardStore } from './store/boardStore'
 
 export default function App() {
+  useEffect(() => {
+    const warnUnsaved = (event: BeforeUnloadEvent) => {
+      if (useBoardStore.getState().pendingSaves) { event.preventDefault(); event.returnValue = '' }
+    }
+    window.addEventListener('beforeunload', warnUnsaved)
+    return () => window.removeEventListener('beforeunload', warnUnsaved)
+  }, [])
   const [activeProject, setActiveProject] = useState<Project | null>(null)
   const [initialLoading, setInitialLoading] = useState(true)
   const { fetchProjects } = useProjectStore()

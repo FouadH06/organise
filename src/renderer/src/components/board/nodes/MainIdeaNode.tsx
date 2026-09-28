@@ -6,6 +6,7 @@ import type { NodeData } from '../../../types'
 import { Copy, Trash2, Lightbulb } from 'lucide-react'
 import ConfirmDialog from '../ConfirmDialog'
 import ColorPicker from './ColorPicker'
+import { cardColorStyle } from '../../../lib/cardColors'
 import './NodeCard.css'
 import './MainIdeaNode.css'
 import { useCardGrowth } from '../../../hooks/useCardGrowth'
@@ -41,7 +42,6 @@ export function MainIdeaNode({ id, data, selected }: NodeProps<NodeData>) {
     if (descVal !== data.description) updateNodeData(id, { description: descVal })
   }, [descVal, data.description, id, updateNodeData])
 
-  const isLight = data.customBg === '#ffffff'
 
   return (
     <>
@@ -58,10 +58,10 @@ export function MainIdeaNode({ id, data, selected }: NodeProps<NodeData>) {
       />
       <div
         ref={cardRef}
-        className={`node-card main-idea-card ${selected ? 'selected' : ''} ${isLight ? 'node-card-light' : ''}`}
+        className={`node-card main-idea-card ${selected ? 'selected' : ''}`}
         style={{
           '--node-accent': '#3b82f6',
-          ...(data.customBg ? { background: data.customBg } : {})
+          ...cardColorStyle(data.customBg)
         } as React.CSSProperties}
       >
         <CardHandles />
@@ -70,7 +70,7 @@ export function MainIdeaNode({ id, data, selected }: NodeProps<NodeData>) {
         <div className="node-header">
           <span className="node-icon"><Lightbulb size={15} color="#3b82f6" /></span>
           <div className="node-title-wrap">
-            <div className="node-label" style={{ color: '#3b82f6' }}>Main Idea</div>
+            <div className="node-label">Main Idea</div>
             {editTitle ? (
               <input
                 autoFocus
@@ -87,7 +87,7 @@ export function MainIdeaNode({ id, data, selected }: NodeProps<NodeData>) {
               <div className="node-title" onDoubleClick={() => setEditTitle(true)}>{data.title}</div>
             )}
           </div>
-          <div className="node-actions">
+          <div className="node-actions nodrag nopan">
             <ColorPicker
               currentColor={data.customBg}
               onSelect={(bg) => updateNodeData(id, { customBg: bg })}
@@ -134,7 +134,7 @@ export function MainIdeaNode({ id, data, selected }: NodeProps<NodeData>) {
         {/* Footer */}
         <div className="node-footer">
           <select
-            className="node-select"
+            className="node-select nodrag"
             value={data.status ?? 'idea'}
             onChange={e => updateNodeData(id, { status: e.target.value as NodeData['status'] })}
           >

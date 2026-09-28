@@ -11,10 +11,11 @@ import {
 } from 'lucide-react'
 import ConfirmDialog from '../ConfirmDialog'
 import ColorPicker from './ColorPicker'
+import { cardColorStyle } from '../../../lib/cardColors'
 import './NodeCard.css'
 import { useCardGrowth } from '../../../hooks/useCardGrowth'
 
-const ICON_MAP: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
+const ICON_MAP: Record<string, React.ComponentType<{ size?: string | number; color?: string }>> = {
   Lightbulb, CheckSquare, FileText, Sparkles, Search,
   Link2, Zap, XCircle, Target, Gem
 }
@@ -62,7 +63,6 @@ export function GenericNode({ id, data, selected, type }: NodeProps<NodeData> & 
     if (descVal !== data.description) updateNodeData(id, { description: descVal })
   }, [descVal, data.description, id, updateNodeData])
 
-  const isLight = data.customBg === '#ffffff'
 
   return (
     <>
@@ -79,10 +79,10 @@ export function GenericNode({ id, data, selected, type }: NodeProps<NodeData> & 
       />
       <div
         ref={cardRef}
-        className={`node-card ${selected ? 'selected' : ''} ${isLight ? 'node-card-light' : ''}`}
+        className={`node-card ${selected ? 'selected' : ''}`}
         style={{
           '--node-accent': meta.color,
-          ...(data.customBg ? { background: data.customBg } : {})
+          ...cardColorStyle(data.customBg)
         } as React.CSSProperties}
       >
         <CardHandles />
@@ -91,7 +91,7 @@ export function GenericNode({ id, data, selected, type }: NodeProps<NodeData> & 
         <div className="node-header">
           <span className="node-icon"><NodeIcon name={meta.icon} color={meta.color} /></span>
           <div className="node-title-wrap">
-            <div className="node-label" style={{ color: meta.color }}>{meta.label}</div>
+            <div className="node-label">{meta.label}</div>
             {editTitle ? (
               <input
                 autoFocus
@@ -108,7 +108,7 @@ export function GenericNode({ id, data, selected, type }: NodeProps<NodeData> & 
               <div className="node-title" onDoubleClick={() => setEditTitle(true)}>{data.title}</div>
             )}
           </div>
-          <div className="node-actions">
+          <div className="node-actions nodrag nopan">
             <ColorPicker
               currentColor={data.customBg}
               onSelect={(bg) => updateNodeData(id, { customBg: bg })}

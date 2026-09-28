@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useRef, useState } from 'react'
 import ReactFlow, {
   Background, Controls, BackgroundVariant,
-  applyNodeChanges, applyEdgeChanges, MiniMap, ConnectionMode,
+  applyEdgeChanges, MiniMap, ConnectionMode,
   type OnConnect, type NodeDragHandler, type OnEdgesDelete
 } from 'reactflow'
 import 'reactflow/dist/style.css'
@@ -16,6 +16,7 @@ import Sidebar from './Sidebar'
 import ResizableSidebar from './ResizableSidebar'
 import { ArrowLeft, Maximize2 } from 'lucide-react'
 import './Board.css'
+import { applyBoardNodeChanges } from '../../lib/nodeChanges'
 
 // Each generic node type needs a stable component reference (not inline lambdas)
 // so React Flow doesn't remount on every render.
@@ -56,7 +57,7 @@ export default function Board({ project, onBack }: Props) {
   const { nodes, edges } = store
   const onNodesChange = useCallback((changes: import('reactflow').NodeChange[]) => {
     const current = useBoardStore.getState()
-    current.setNodes(applyNodeChanges(changes, current.nodes))
+    applyBoardNodeChanges(changes, current)
   }, [])
   const onEdgesChange = useCallback((changes: import('reactflow').EdgeChange[]) => {
     const current = useBoardStore.getState()
@@ -170,6 +171,12 @@ export default function Board({ project, onBack }: Props) {
           <ArrowLeft size={14} /> Dashboard
         </button>
         <span className="board-topbar-title">{project.name}</span>
+        <div className="board-save-status" aria-live="polite">
+          {store.error ? <>
+            <span title={store.error}>Changes not saved</span>
+            <button className="btn btn-ghost btn-sm" onClick={() => void store.retrySaves()}>Retry</button>
+          </> : store.pendingSaves ? 'Saving…' : 'Saved'}
+        </div>
         <div className="board-topbar-right">
           <button
             className="btn btn-ghost btn-sm"
@@ -185,7 +192,6 @@ export default function Board({ project, onBack }: Props) {
       </div>
 
       <div className="board-body">
-        {store.error && <div role="alert" style={{ position: 'absolute', top: 54, right: 16, zIndex: 100, background: '#7f1d1d', padding: 12, borderRadius: 8 }}>{store.error}</div>}
         {/* Sidebar */}
         {sidebarOpen && (
           <ResizableSidebar>
@@ -201,6 +207,12 @@ export default function Board({ project, onBack }: Props) {
 
         {/* Canvas */}
         <div className="board-canvas" ref={flowWrapper}>
+          {store.loadError && <div className="canvas-loading-overlay" role="alert">
+            <div className="app-loading-box">
+              <p>{store.loadError}</p>
+              <button className="btn btn-ghost" onClick={() => void store.loadBoard(project.id)}>Retry loading</button>
+            </div>
+          </div>}
           {store.loading && (
             <div className="canvas-loading-overlay animate-fade">
               <div className="app-loading-box">
